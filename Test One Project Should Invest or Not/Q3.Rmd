@@ -1,0 +1,420 @@
+---
+title: "Q2"
+author: "Yantong Li"
+date: "7/24/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning=FALSE, message=FALSE)
+```
+
+
+## Step I: 获取数据
+```{r}
+Assess_data <- read.csv("Assess_data.csv",na.strings = " ",stringsAsFactors = FALSE)
+JM_data <- read.csv("JM_data.csv",na.strings = " ", stringsAsFactors = FALSE)
+Staff_Info <- read.csv("Staff_Info.csv",na.strings = " ", stringsAsFactors = FALSE)
+
+```
+
+
+## Step II: 缺失值处理
+### Staff_Info 缺失值处理
+```{r}
+
+
+#summary(Assess_data)
+#summary(JM_data)
+#summary(Staff_Info)
+
+
+library(tidyverse)
+#map(Assess_data,~sum(is.na(.)))  # amount of na in specific columns
+#map(JM_data,~sum(is.na(.)))  # amount of na in specific columns
+#map(Staff_Info,~sum(is.na(.)))  # amount of na in specific columns
+
+
+#Staff_Info[which(is.na(Staff_Info$JobClan)),]
+#Staff_Info[which(is.na(Staff_Info$JobGradeRankNum)),]
+#Staff_Info[which(is.na(Staff_Info$EducationCode)),]
+#Staff_Info[which(is.na(Staff_Info$GenderCode)),]
+
+Staff_Info[which(is.na(Staff_Info$JobGradeRankNum)),]$JobGradeRankNum = 7  # 7 is the mode number
+Staff_Info[which(is.na(Staff_Info$GenderCode)),]$GenderCode = 0  # 0 is the mode number
+Staff_Info[which(is.na(Staff_Info$EducationCode)),]$EducationCode = "本科"  # 本科 is the mode number
+Staff_Info[which((is.na(Staff_Info$JobClan))&(Staff_Info$EducationCode == "硕士"&(Staff_Info$GenderCode ==1))),]$JobClan =  "P" 
+Staff_Info[which((is.na(Staff_Info$JobClan))&(Staff_Info$EducationCode == "未知"&(Staff_Info$GenderCode ==0))),]$JobClan =  "T" 
+Staff_Info[which((is.na(Staff_Info$JobClan))&(Staff_Info$EducationCode == "本科"&(Staff_Info$GenderCode ==1))),]$JobClan =  "P" 
+Staff_Info[which((is.na(Staff_Info$JobClan))&(Staff_Info$EducationCode == "硕士"&(Staff_Info$GenderCode ==0))),]$JobClan =  "T" 
+Staff_Info[which((is.na(Staff_Info$JobClan))&(Staff_Info$EducationCode == "本科"&(Staff_Info$GenderCode ==0))),]$JobClan =  "T" 
+
+Staff_Info[which(Staff_Info$EducationCode == "硕士研究生"),]$EducationCode ="硕士"
+Staff_Info[which(Staff_Info$EducationCode == "学士"),]$EducationCode ="本科"
+Staff_Info[which(Staff_Info$DimissionID == "在职"),]$DimissionID = 0
+Staff_Info[which(Staff_Info$DimissionID %in% c("主动离职","被动离职","离职")),]$DimissionID = 1
+```
+
+### 合并Assess_data和JM_data并作缺失值处理
+```{r}
+# merge Assess_data and JM_Data
+Assess_data_2018 <- Assess_data[which(Assess_data$Period == 2018),c(1,3)]
+Assess_data_2019 <- Assess_data[which(Assess_data$Period == 2019),c(1,3)]
+
+
+#setdiff( Assess_data_2018$ID,Assess_data_2019$ID)  # these staffs assess in 2018 not in 2019
+#setdiff( Assess_data_2019$ID,Assess_data_2018$ID)  # these staffs assess in 2019 not in 2018
+#intersect( Assess_data_2019$ID,Assess_data_2018$ID) # these staffs do the assess in both years
+#length(union(Assess_data_2018$ID,Assess_data_2019$ID))  
+#setdiff(Staff_Info$ID,union(Assess_data_2018$ID,Assess_data_2019$ID))   # These Staffs do not complishment the Assess Survey
+#setdiff(union(Assess_data_2018$ID,Assess_data_2019$ID),Staff_Info$ID)  # all the staffs who give assess_scores are record in Staff_Info
+
+Assess_data_new = merge(Assess_data_2018,Assess_data_2019,by= c("ID"),all = T)
+
+
+JM_data_2018 <- JM_data[which(JM_data$Year == 2018),c(1,3:4)]
+JM_data_2019 <- JM_data[which(JM_data$Year == 2019),c(1,3:4)]
+
+#setdiff( JM_data_2018$ID,JM_data_2019$ID)  # these staffs scored in 2018 not in 2019
+#setdiff( JM_data_2019$ID,JM_data_2018$ID)  # these staffs scored in 2019 not in 2018
+#intersect( JM_data_2019$ID,JM_data_2018$ID) # these staffs scored in both years
+#length(union(JM_data_2018$ID,JM_data_2019$ID))  
+#setdiff(Staff_Info$ID,union(JM_data_2018$ID,JM_data_2019$ID))   
+#setdiff(union(JM_data_2018$ID,JM_data_2019$ID),Staff_Info$ID)  # all the staffs in Staff_Info scored.
+
+Assess_data_new = merge(Assess_data_2018,Assess_data_2019,by= c("ID"),all = T)
+colnames(Assess_data_new) <- c("ID","AssessScore_2018","AssessScore_2019")
+JM_data_new = merge(JM_data_2018,JM_data_2019,by=  c("ID"),all =T)
+colnames(JM_data_new) <- c("ID","Engagement_2018","Satisfaction_2018","Engagement_2019","Satisfaction_2019")
+
+
+
+Join_Table = merge(Assess_data_new,JM_data_new,by = c("ID"),all = T)
+
+Join_Table$ID <- as.factor(Join_Table$ID)
+# summary(Join_Table)
+
+
+
+# To do it for all names
+Staff_Info[] <- lapply( Staff_Info, factor) # the "[]" keeps the dataframe structure
+ col_names <- names(Staff_Info)
+# do do it for some names in a vector named 'col_names'
+Staff_Info[col_names] <- lapply(Staff_Info[col_names] , factor)
+# summary(Staff_Info)
+
+```
+
+
+
+## Step III: 特征工程
+1. 员工在2019年8月31号的**年龄**
+2. 员工**在职时间** Time spend in company
+```{r}
+
+#summary(Staff_Info)
+Staff_Info$BirthDate = as.Date(Staff_Info$BirthDate,format =  "%Y-%m-%d")
+Staff_Info$CareerDate = as.Date(Staff_Info$CareerDate,format =  "%Y-%m-%d")
+
+
+# 1. Age of Staff when 2019-8-31
+now_date = as.Date("2019-8-31",format =  "%Y-%m-%d")
+Staff_Info$Age = round(as.numeric(now_date - Staff_Info$BirthDate)/365,0)
+# summary(Staff_Info)
+# 存在异常值
+#Staff_Info[which((Staff_Info$Age < 18)| (Staff_Info$Age > 65) ),]
+Staff_Info = Staff_Info[which((Staff_Info$Age >= 18)& (Staff_Info$Age <= 65) ),]
+
+
+# 2. time spend in company
+Staff_Info$Time_Spend_Company = round(as.numeric(now_date - Staff_Info$CareerDate)/365,0)
+
+Total_Data = merge(Staff_Info,Join_Table,by=c("ID"))
+score_col = c("AssessScore_2018"  , "AssessScore_2019", "Engagement_2018",    "Satisfaction_2018",  "Engagement_2019",    "Satisfaction_2019"  )
+Total_Data[score_col] <- lapply(Total_Data[score_col] , as.numeric)
+#summary(Total_Data)
+
+```
+
+
+
+
+## Step III: 指标选取
+### 衡量两个价值，长期价值与短期价值
+**长期价值**：Q计划是否带来员工满意度(Satisfaction_Rate)提升，敬业度(Engagement_Rate)提升。员工满意度与敬业度对长期公司利益增长有一定的影响。
+Satisfaction_Rate = (Satisfaction_2019 - Satisfaction_2018)/Satisfaction_2018
+Engagement_Rate = (Engagement_2019 - Engagement_2018)/Engagement_2018
+Satisfaction_2019
+Engagement_2019
+**短期价值**：Q计划是否带来员工绩效(Assess_Rate)提升。从短期看来，员工的绩效反映了公司这年利益优劣。
+Assess_Rate = (AssessScore_2019 - AssessScore_2018 )/AssessScore_2018
+AssessScore_2019
+**离职率**: 是否留得下人才
+
+
+```{r}
+
+Total_Data$Assess_Rate = (Total_Data$AssessScore_2019 -Total_Data$AssessScore_2018 )/Total_Data$AssessScore_2018
+Total_Data$Satisfaction_Rate = (Total_Data$Satisfaction_2019 -Total_Data$Satisfaction_2018 )/Total_Data$Satisfaction_2018
+Total_Data$Engagement_Rate = (Total_Data$Engagement_2019 -Total_Data$Engagement_2018 )/Total_Data$Engagement_2018
+
+
+
+# transform missing value to "N/A"(not available). create a level for null value
+for(i in 2:ncol(Total_Data)){
+  col = Total_Data[,i]
+  Total_Data[which(is.na(col) == T),i] <- "N/A"
+}
+
+
+col_names <- c("AssessScore_2018","AssessScore_2019","Engagement_2018","Engagement_2019",
+               "Satisfaction_2018","Satisfaction_2019")
+# do do it for some names in a vector named 'col_names'
+Total_Data[col_names] <- lapply(Total_Data[col_names] , factor)
+col_names <- c("Assess_Rate","Satisfaction_Rate","Engagement_Rate")
+Total_Data[col_names] <- lapply(Total_Data[col_names] , as.numeric)
+
+
+```
+
+### 拆分实验组和对照组
+```{r}
+treatment = Total_Data[which(Total_Data$LTI == 1),]
+control = Total_Data[which(Total_Data$LTI == 0),]
+```
+
+
+
+## Step IV: 聚类，找到相似样本
+1. 目的：通过聚类找到相似的样本，对样本进行分流，尽可能保证每一个cluster里面用户组成成分完全相同，即各特征用户占总用户比尽可能一致，以排除无关变量的影响（如职位类型，性别）
+
+2. 选取标准：对除了衡量指标以外的所有变量进行分析。若实验组与对照组区别不大，就认为实验组与对照组对就该变量而言已排除属性差异的干扰，可以不用再通过聚类进行分流
+
+3. 无关变量选取
+
+  1. AssessScore_2018 高的员工才有机会参与“Q计划”, Assess Score > 3.
+```{r}
+treatment_new = treatment # 存作副本
+control_new = control
+
+table(treatment$AssessScore_2018)
+table(control$AssessScore_2018)
+control_new = control_new[which(control_new$AssessScore_2018 %in% c(3:5,"N/A")),]
+```
+由此发现，绩效高的员工才有机会参与“Q计划”, 在2018年的Assess Score需大于3.
+就AssessScore_2018而言，实验组与对照组有明显区别，因此只分析AssessScore_2018 > 3 及缺失的情况。**排除AssessScore_2018 < 3的对照组数据**
+
+
+  2. JobClan 职位类型
+```{r}
+rbind(table(treatment_new$JobClan)/nrow(treatment_new),
+      table(control_new$JobClan)/nrow(control_new))
+```
+职位类型几乎没有区别
+
+
+  3. JobGradeRankNum   
+```{r}
+rbind(table(treatment_new$JobGradeRankNum)/nrow(treatment_new),table(control_new$JobGradeRankNum)/nrow(control_new))
+```
+职级有明显区别，需要加入聚类分析的特征中
+
+猜测：Q计划只针对JobGradeRankNum <= 9 的员工开放
+  
+
+```{r}
+#control_new = control_new[which(control_new$JobGradeRankNum %in% 1:9),]
+#control_new$JobGradeRankNum = droplevels(control_new$JobGradeRankNum)
+#treatment_new$JobGradeRankNum = droplevels(treatment_new$JobGradeRankNum)
+```
+
+  
+  
+  4. EducationCode
+```{r}
+rbind(table(treatment_new$EducationCode)/nrow(treatment_new),
+      table(control_new$EducationCode)/nrow(control_new))
+```
+    猜测：Q计划只针对EducationCode为未知,本科,硕士的员工。但是这个特征已经被JobGradeRankNum等特征解释了，且数量很少，所以不考虑。
+  
+
+
+  5. GenderCode
+```{r}
+rbind(table(treatment_new$GenderCode)/nrow(treatment_new),
+      table(control_new$GenderCode)/nrow(control_new))
+```
+性别占比几乎没有区别
+
+  
+  
+  6. Age
+```{r}
+rbind(table(treatment_new$Age)/nrow(treatment_new),
+      table(control_new$Age)/nrow(control_new))
+```
+年龄占比有明显区别，需要加入聚类分析的特征中
+
+
+
+  7. Time_Spend_Company
+```{r}
+rbind(table(treatment_new$Time_Spend_Company)/nrow(treatment_new),
+      table(control_new$Time_Spend_Company)/nrow(control_new))
+```
+在职时间差异较大 需要加入聚类分析的特征中
+
+  
+  
+  
+  9. Satisfaction_2018
+```{r}
+rbind(table(treatment_new$Satisfaction_2018)/nrow(treatment_new),
+      table(control_new$Satisfaction_2018)/nrow(control_new))
+```
+差异一般 可加入聚类分析的特征中
+
+  
+  10. Engagement_2018
+
+  
+```{r}
+rbind(table(treatment_new$Engagement_2018)/nrow(treatment_new),
+      table(control_new$Engagement_2018)/nrow(control_new))
+```
+    差异不明显 可不加入聚类分析的特征中
+
+```{r}
+Total_Data_new = rbind(treatment_new,control_new)
+clt_data = select(Total_Data_new,c(JobGradeRankNum, Age,Time_Spend_Company))
+```
+
+
+2. 聚类
+
+```{r}
+library(clustMixType)
+
+
+num_col = c("Age")
+clt_data[num_col] <- sapply(clt_data[num_col], scale)
+
+# apply k-prototypes
+
+set.seed(121)
+kpres <- kproto(clt_data, 2)
+# clprofiles(kpres, clt_data)
+kpres$size  # 5189 2563 5467 
+```
+
+3. 获取两个相似样本
+```{r}
+Total_Data_clt1 = Total_Data_new[kpres$cluster == 1,]
+col_names <- c("AssessScore_2018","AssessScore_2019","Engagement_2018","Engagement_2019",
+               "Satisfaction_2018","Satisfaction_2019")
+Total_Data_clt1[col_names] = lapply(Total_Data_clt1[col_names], as.numeric)
+treatment_clt1 = Total_Data_clt1[Total_Data_clt1$LTI == 1,]
+control_clt1 = Total_Data_clt1[Total_Data_clt1$LTI == 0,]
+
+Total_Data_clt2 = Total_Data_new[kpres$cluster == 2,]
+col_names <- c("AssessScore_2018","AssessScore_2019","Engagement_2018","Engagement_2019",
+               "Satisfaction_2018","Satisfaction_2019")
+Total_Data_clt2[col_names] = lapply(Total_Data_clt2[col_names], as.numeric)
+treatment_clt2 = Total_Data_clt2[Total_Data_clt2$LTI == 1,]
+control_clt2 = Total_Data_clt2[Total_Data_clt2$LTI == 0,]
+
+
+```
+
+
+
+
+## Step V: 假设检验
+1. 绩效增长率 Assess_Rate
+
+```{r}
+# we use ratio not the actual score, that is because we have already removed the score less than 3. If we compare the  score, it is hard to compare and distinguish.  They are close.
+
+Assess_Rate_t_mean = round(mean(treatment_clt1$Assess_Rate,na.rm = T),3)
+Assess_Rate_c_mean = round(mean(control_clt1$Assess_Rate,na.rm = T),3)
+AssessScore_2019_t_mean = round(mean(treatment_clt1$AssessScore_2019,na.rm = T),3)
+AssessScore_2019_c_mean = round(mean(control_clt1$AssessScore_2019,na.rm = T),3)
+paste("实验组绩效增长率均值为 ",Assess_Rate_t_mean,",对照组绩效增长率均值为 ",Assess_Rate_c_mean,sep = '')
+paste("实验组在2019年绩效均值为 ",AssessScore_2019_t_mean," ,对照组在2019年绩效均值为 ",AssessScore_2019_c_mean,". （对照组已排除2018年绩效值小于3的员工数据",sep = '')
+
+# we want to improve the rate for 10 times
+# power.prop.test(p1 = 0.0004, p2 = 0.004, sig.level = 0.05, power = 0.80, alternative = "two")
+assess_rate_t = t.test(treatment_clt1$Assess_Rate,control_clt1$Assess_Rate,alternative = "two")
+paste("对实验组和对照组的绩效增率进行t检验，p值为",round(assess_rate_t$p.value,4))
+assess_score_2019_t = t.test(treatment_clt1$AssessScore_2019,control_clt1$AssessScore_2019,alternative = "two")
+paste("对实验组和对照组2019年的绩效进行t检验，p值为",round(assess_score_2019_t$p.value,4))
+```
+即使已经对对照组排除了2018年绩效偏低的员工，实验组仍然有较高的绩效增率，在2019年也有较高的绩效表现。
+
+
+
+2. Satisfaction_Rate
+```{r}
+Satisfaction_Rate_t_mean = round(mean(treatment_clt1$Satisfaction_Rate,na.rm = T),4)
+Satisfaction_Rate_c_mean = round(mean(control_clt1$Satisfaction_Rate,na.rm = T),4)
+paste("实验组满意度增长率均值为 ",Satisfaction_Rate_t_mean,",对照组绩效增长率均值为 ",Satisfaction_Rate_c_mean,sep = '')
+Satisfaction_Rate_t = t.test(treatment_clt1$Satisfaction_Rate,control_clt1$Satisfaction_Rate,alternative = "g")
+paste("对实验组和对照组的绩效增率进行t检验，p值为",round(Satisfaction_Rate_t$p.value,4))
+
+Satisfaction_2019_t_mean = round(mean(treatment_clt1$Satisfaction_2019,na.rm = T),4)
+Satisfaction_2019_c_mean = round(mean(control_clt1$Satisfaction_2019,na.rm = T),4)
+paste("实验组满意度均值为 ",Satisfaction_2019_t_mean,",对照组绩效均值为 ",Satisfaction_2019_c_mean,sep = '')
+Satisfaction_2019_t = t.test(treatment_clt1$Satisfaction_2019,control_clt1$Satisfaction_2019,alternative = "g")
+paste("对实验组和对照组的绩效增率进行t检验，p值为",round(Satisfaction_2019_t$p.value,4))
+
+
+```
+ 对于实验组对照组来说，满意度增率为负值，其中对照组尤为明显。实验组满意度增率均值为-0.33%，而对照组满意度为-0.97%.满意度下降幅度不大，但长期看来，需提升员工满意程度以此带来长期利益。
+
+
+3. Engagement_Rate
+```{r}
+
+mean(treatment_clt1$Engagement_Rate,na.rm = T)
+mean(control_clt1$Engagement_Rate,na.rm = T)
+t.test(treatment_clt1$Engagement_Rate,control_clt1$Engagement_Rate,alternative = "g")
+
+
+Engagement_Rate_t_mean = round(mean(treatment_clt1$Engagement_Rate,na.rm = T),4)
+Engagement_Rate_c_mean = round(mean(control_clt1$Engagement_Rate,na.rm = T),4)
+paste("实验组敬业度增长率均值为 ",Engagement_Rate_t_mean,",对照组敬业度增长率均值为 ",Engagement_Rate_c_mean,sep = '')
+Engagement_Rate_t = t.test(treatment_clt1$Engagement_Rate,control_clt1$Engagement_Rate,alternative = "g")
+paste("对实验组和对照组的绩效增率进行t检验，p值为",round(Engagement_Rate_t$p.value,4))
+
+Engagement_2019_t_mean = round(mean(treatment_clt1$Engagement_2019,na.rm = T),4)
+Engagement_2019_c_mean = round(mean(control_clt1$Engagement_2019,na.rm = T),4)
+paste("实验组满意度均值为 ",Engagement_2019_t_mean,",对照组绩效均值为 ",Engagement_2019_c_mean,sep = '')
+Engagement_2019_t = t.test(treatment_clt1$Engagement_2019,control_clt1$Engagement_2019,alternative = "g")
+paste("对实验组和对照组的绩效增率进行t检验，p值为",round(Engagement_2019_t$p.value,4))
+
+
+
+```
+ 对于实验组对照组来说，敬业度增率为负值，其中对照组尤为明显。实验组满意度增率均值为-0.99%，而对照组满意度为-1.71%。根据假设检验不能说明对照组增率下降得比实验组快。总的来说，敬业度下降幅度不大，但长期看来，需提升员工敬业程度以此带来长期利益。
+
+
+4. Dimission_Rate
+
+```{r}
+
+table(treatment_clt1$DimissionID)/nrow(treatment_clt1)
+table(control_clt1$DimissionID)/nrow(control_clt1)
+
+
+```
+对实验组来说，大约有1.27%的员工离职，对于对照组来说，约有5.85%的员工离职。这里的实验组与对照组的员工都是在2018年绩效大于3的员工，能给公司带来有效收益。实验组离职率低于对照组表明了Q计划的长期实施能为公司留下人才。
+
+
+## 总结
+总体来说，Q计划能为公司带来利益增加，但是员工的满意度与敬业度皆有下降。原因可能在于这两类指标评分更为严格，或是普遍看来员工对工作不够上心。为了长期利益，需要进行提升。另外Q计划的长期进行策略能为公司留下人才。
+
+
+
+
+
+
