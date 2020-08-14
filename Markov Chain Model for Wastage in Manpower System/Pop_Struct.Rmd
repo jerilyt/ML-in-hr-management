@@ -1,0 +1,625 @@
+ ---
+title: "Population Structure"
+author: "Yantong Li"
+date: "7/24/2020"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning=FALSE, message=FALSE)
+```
+
+
+## Transform Raw population to Distibution
+```{r}
+age_range = function(population_dataset){
+  Age_Range = c('20-24','25-28','29-31','32-35','36-40','41-50','51-60')
+  population_dataset$Age_Range = 0
+  for (i in 1:nrow(population_dataset)){
+    if (population_dataset[i,]$Age %in% 20:24){
+      population_dataset[i,]$Age_Range = Age_Range[1]
+    }
+    else if (population_dataset[i,]$Age %in% 25:28){
+      population_dataset[i,]$Age_Range = Age_Range[2]
+    }
+    else if (population_dataset[i,]$Age %in% 29:31){
+      population_dataset[i,]$Age_Range = Age_Range[3]
+    }
+    else if (population_dataset[i,]$Age %in% 32:35){
+      population_dataset[i,]$Age_Range = Age_Range[4]
+    }  
+    else if (population_dataset[i,]$Age %in% 36:40){
+      population_dataset[i,]$Age_Range = Age_Range[5]
+    }
+    else if (population_dataset[i,]$Age %in% 41:50){
+      population_dataset[i,]$Age_Range = Age_Range[6]
+    }
+    else{
+      population_dataset[i,]$Age_Range = Age_Range[7]
+    }
+  }
+  population_dataset
+}
+
+```
+
+```{r}
+dimission_rate = function(population_dataset= pop_struc){
+  population_dataset_group <- age_range(population_dataset)
+  dismission_dataset <- population_dataset_group %>% 
+    group_by(Age_Range,Year) %>% 
+    summarise(Total_Number = sum(Number),
+              Dismission_Number = sum(Dismission))
+  
+  dim_year=  2015:2018
+  dimmision_age_range = c()
+  dimmision_year = c()  
+  dimm_number = c()
+  dimm_last_total_n = c()
+  for(y in dim_year){
+    for (age in Age_Range){
+      dismiss_n = as.numeric(dismission_dataset[which((dismission_dataset$Age_Range == age)
+                                                      & (dismission_dataset$Year == y)),4])
+      last_total_n = as.numeric(dismission_dataset[which((dismission_dataset$Age_Range == age)
+                                                         & (dismission_dataset$Year == y-1)),3])
+      dimmision_year = c(dimmision_year,y)
+      dimmision_age_range = c(dimmision_age_range,age)
+      dimm_number=  c(dimm_number,dismiss_n)
+      dimm_last_total_n = c(dimm_last_total_n,last_total_n)
+      
+    }
+  }
+  dimm_table = as.data.frame(dimmision_year)
+  dimm_table$Age_range = dimmision_age_range
+  dimm_table$dimmision_number = dimm_number
+  dimm_table$last_total_num = dimm_last_total_n
+  last_total_number = dimm_table %>% 
+    group_by(dimmision_year) %>% 
+    summarise(Last_Total_Num = sum(last_total_num)) %>% 
+    select(Last_Total_Num)
+  dimm_table$dimmision_rate = 0
+  for(i in 1:nrow(dimm_table)){
+    y = dimm_table$dimmision_year[i]
+    rate = dimm_table$dimmision_number[i]/last_total_number$Last_Total_Num[y-2014]
+    dimm_table$dimmision_rate[i] = rate
+  }
+  dimm_table
+}
+
+```
+
+
+
+```{r}
+library(dplyr)
+Distribution = function(population_dataset,sub_Year){
+  population_dataset_sub = population_dataset[which(population_dataset$Year == sub_Year),]
+  population_dataset_group <- age_range(population_dataset_sub)
+  dist_dataset <- population_dataset_group %>% 
+    group_by(Age_Range) %>%
+    summarise(Total_Number = sum(Number),
+              Recruitment_Number = sum(Recruitment)
+    )   
+  
+  
+  dist_dataset$Dismission_Number = dimm_table[dimm_table$dimmision_year==sub_Year,]$dimmision_number
+  dist_dataset$Dismission_Ratio = dimm_table[dimm_table$dimmision_year==sub_Year,]$dimmision_rate
+  
+  dist_dataset = subset(dist_dataset,select = c(1,2,4,5,3))
+  
+  # boundary number
+  Boundary_Age = c(24,28,31,35,40,50,60)
+  Boundary_Age_Number = c()
+  for (i in Boundary_Age){
+    age_num = population_dataset_sub[which(population_dataset_sub$Age == i),]$Number
+    Boundary_Age_Number = c(Boundary_Age_Number,age_num)
+  }
+  Boundary_Age_Ratio <- Boundary_Age_Number/dist_dataset$Total_Number
+  
+  total_recruitment = sum(dist_dataset$Recruitment_Number)
+  Recruitment_Ratio = dist_dataset$Recruitment_Number/total_recruitment  # ratio for each age range
+  dist_dataset = cbind(dist_dataset,Recruitment_Ratio,Boundary_Age,Boundary_Age_Number,Boundary_Age_Ratio)
+  
+  dist_dataset
+}
+```
+
+
+
+
+## Transition Matrix from Preview Year to Next Year. (For example, from 2018 to 2019)
+
+```{r}
+Transition <- function(Distribution_dataset,sub_year){
+  
+  Age_Range = c('20-24','25-28','29-31','32-35','36-40','41-50','51-60')
+  N_20_24 = rep(0,7)
+  N_25_28 = rep(0,7)
+  N_29_31 = rep(0,7)
+  N_32_35 = rep(0,7)
+  N_36_40 = rep(0,7)
+  N_41_50 = rep(0,7)
+  N_51_60 = rep(0,7)
+  Recruitment = Distribution_dataset$Recruitment_Ratio
+  Dismission = Distribution_dataset$Dismission_Ratio
+  Retirement = c(0,0,0,0,0,0,retire_rate[sub_year-2015])
+  
+  
+  N_25_28[1] = Distribution_dataset$Boundary_Age_Ratio[1]
+  N_29_31[2] = Distribution_dataset$Boundary_Age_Ratio[2]
+  N_32_35[3] = Distribution_dataset$Boundary_Age_Ratio[3]
+  N_36_40[4] = Distribution_dataset$Boundary_Age_Ratio[4]
+  N_41_50[5] = Distribution_dataset$Boundary_Age_Ratio[5]
+  N_51_60[6] = Distribution_dataset$Boundary_Age_Ratio[6]
+  
+  Tran_Mtx = cbind(N_20_24,N_25_28,N_29_31,N_32_35,N_36_40,N_41_50,N_51_60,Dismission,Retirement,Recruitment)
+  
+  for (i in 1:7){
+    for (j in 1:7){
+      if (i == j){
+        if (i < 7){
+          Tran_Mtx[i,j] = 1 - Tran_Mtx[i,i+1] - Tran_Mtx[i,8]
+        }else{
+          Tran_Mtx[i,j] = 1 - Tran_Mtx[i,8] - Tran_Mtx[i,9]
+        }
+      }
+    }
+  }
+  rownames(Tran_Mtx) <- c('P_20_24','P_25_28','P_29_31','P_32_35','P_36_40','P_41_50','P_51_60')
+  as.data.frame(Tran_Mtx)
+}
+```
+
+
+```{r}
+
+pre_recruit <- function(pred_year){
+  # Predicting by mean
+  
+  p_total_recruit = predict(lm_total_recruit,data.frame(Year = pred_year))*0.7
+  p_20_24_recruit = prob_20_24_recruit*p_total_recruit*1.3
+  p_25_28_recruit = prob_25_28_recruit*p_total_recruit*1.3
+  p_29_31_recruit = prob_29_31_recruit*p_total_recruit*1.3
+  p_32_35_recruit = prob_32_35_recruit*p_total_recruit*1.1
+  p_36_40_recruit = prob_36_40_recruit*p_total_recruit*0.5
+  p_41_50_recruit = prob_41_50_recruit*p_total_recruit*0.5
+  p_51_60_recruit = prob_51_60_recruit*p_total_recruit*0.5
+  
+  p_recruit_number = c(p_20_24_recruit,p_25_28_recruit,p_29_31_recruit,p_32_35_recruit,
+                       p_36_40_recruit,p_41_50_recruit,p_51_60_recruit)
+  pre_recruitment = as.data.frame(p_recruit_number)
+  rownames(pre_recruitment) = Age_Range
+  pre_recruitment
+}
+
+```
+
+```{r}
+pre_dismission <- function(dist_list){
+  
+  # Predicting by average
+  Total_Number_dim = sum(dist_list[[year_number]]$Total_Number)
+  
+  p_20_24_dism = (mean(Dismission_Ratio_20_24))*Total_Number_dim
+  p_25_28_dism = (mean(Dismission_Ratio_25_28)-0.005)*Total_Number_dim
+  p_29_31_dism = (mean(Dismission_Ratio_29_31)-0.005)*Total_Number_dim
+  p_32_35_dism = (mean(Dismission_Ratio_32_35))*Total_Number_dim
+  p_36_40_dism = (mean(Dismission_Ratio_36_40)+0.05)*Total_Number_dim
+  p_41_50_dism = (mean(Dismission_Ratio_41_50)+0.05)*Total_Number_dim
+  p_51_60_dism = (mean(Dismission_Ratio_51_60)+0.02)*Total_Number_dim
+  
+  p_dismission_number = c(p_20_24_dism,p_25_28_dism,p_29_31_dism,p_32_35_dism,p_36_40_dism,p_41_50_dism,p_51_60_dism)
+  pre_dismission = as.data.frame(p_dismission_number)
+  rownames(pre_dismission) = Age_Range
+  pre_dismission
+}
+```
+
+
+
+```{r}
+pre_retirement <- function(Tran_list){
+  
+  
+  Total_Number_re = dist_list[[year_number]]$Total_Number[7]
+  p_retirement_Ratio_51_60 = predict(lm_Retirement_Ratio_51_60,data.frame(Year = pred_year))*Total_Number_re
+  p_retirement_number = c(0,0,0,0,0,0,p_retirement_Ratio_51_60)
+  pre_retirement = as.data.frame(p_retirement_number)
+  rownames(pre_retirement) = Age_Range
+  pre_retirement
+}
+
+```
+
+
+### 5. Predict Boundary Number
+```{r}
+# predict new population 
+# new population = internal transition + new recruitment
+
+#the first bound table
+
+
+bound_table = function(population_dataset){
+  population_dataset_group = age_range(population_dataset)
+  Bound_Table = select(population_dataset_group[which(population_dataset_group$Year==pred_year-1),],c(2,6,3,4))
+  Bound_Table
+}
+
+
+recuit_cal = function(sub_dataset){
+  avg_recruit = c()
+  avg_total_recruit = sum(sub_dataset)/nrow(sub_dataset)
+  for (i in 1:ncol(sub_dataset)){
+    avg_recruit = c(avg_recruit,mean(sub_dataset[,i])/avg_total_recruit)
+  }
+  avg_recruit
+}
+
+```
+
+
+```{r}
+
+
+##### 1. internal transition
+
+
+stay_prob = function(Tran){
+  Stay_Prob = c()
+  for(age in 20:60){
+    if(age %in% 20:24 ){Stay_Prob = c(Stay_Prob,1-Tran$Dismission[1])}
+    else if(age %in% 25:28 ){Stay_Prob = c(Stay_Prob,1-Tran$Dismission[2])}
+    else if(age %in% 29:31 ){Stay_Prob = c(Stay_Prob,1-Tran$Dismission[3])}
+    else if(age %in% 32:35 ){Stay_Prob = c(Stay_Prob,1-Tran$Dismission[4])}
+    else if(age %in% 36:40 ){Stay_Prob = c(Stay_Prob,1-Tran$Dismission[5])}
+    else if(age %in% 41:50 ){Stay_Prob = c(Stay_Prob,1-Tran$Dismission[6])}
+    else if(age %in% 51:60 ){
+      if (age ==60){
+        Stay_Prob = c(Stay_Prob,1-Tran$Dismission[7]-Tran$Retirement[7])
+      }else{
+        Stay_Prob = c(Stay_Prob,1-Tran$Dismission[7])
+      }
+    }
+  }
+  Stay_Prob
+}
+
+
+internal_tranistion = function(Bound_Table,Tran){
+  Stay_Prob = stay_prob(Tran)
+  
+  in_tran = c(0)
+  for (i in 1:(nrow(Bound_Table)-1)){
+    in_tran = c(in_tran,Bound_Table[i,3]*Stay_Prob[i+1])
+  }
+  in_tran
+}
+  
+##### 2.new recruitment
+
+
+new_rec = function(Bound_Table){
+  rec_group = Bound_Table %>% 
+    group_by(Age_Range) %>% 
+    summarise(Total_Recru = sum(Recruitment)) 
+  
+  New_rec_total = c()
+  for(i in 1:nrow(Bound_Table)){
+    age = i+19
+    if(age %in% 20:24 ){New_rec_total = c(New_rec_total,rec_group$Total_Recru[1]/pre_recruitment[1,])}
+    else if(age %in% 25:28 ){New_rec_total = c(New_rec_total,rec_group$Total_Recru[2]/pre_recruitment[2,])}
+    else if(age %in% 29:31 ){New_rec_total = c(New_rec_total,rec_group$Total_Recru[3]/pre_recruitment[3,])}
+    else if(age %in% 32:35 ){New_rec_total = c(New_rec_total,rec_group$Total_Recru[4]/pre_recruitment[4,])}
+    else if(age %in% 36:40 ){New_rec_total = c(New_rec_total,rec_group$Total_Recru[5]/pre_recruitment[5,])}
+    else if(age %in% 41:50 ){New_rec_total = c(New_rec_total,rec_group$Total_Recru[6]/pre_recruitment[6,])}
+    else if(age %in% 51:60 ){New_rec_total = c(New_rec_total,rec_group$Total_Recru[7]/pre_recruitment[7,])}
+  }
+  New_rec = Bound_Table$Recruitment/New_rec_total
+  New_rec
+}
+
+
+
+##### 3. New Bound Table
+new_Bound_Table = function(Bound_Table){
+  Old_Bound_Table = Bound_Table
+  Old_Bound_Table$Number = New_rec + in_tran
+  Old_Bound_Table$Recruitment = New_rec
+  Old_Bound_Table
+}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+## main
+
+### Obtain Dataset
+```{r}
+pop_struc = read.csv("pop_struc.csv")
+pop_struc = pop_struc[,1:5]
+#View(pop_struc)
+colnames(pop_struc) <- c("Year","Age","Number","Recruitment","Dismission")
+Age_Range = c('20-24','25-28','29-31','32-35','36-40','41-50','51-60')
+```
+
+calculate dimmission rate
+```{r}
+dimm_table = dimission_rate(pop_struc)
+```
+
+
+
+calculate Retirement rate
+```{r}
+Retire_col = c()
+for (i in 2015:2018){
+  Retire_col = c(Retire_col,pop_struc[which((pop_struc$Year == i)&(pop_struc$Age == 60) ),]$Number)
+}
+
+pop_struc_group = age_range(pop_struc)
+
+retire_table <- pop_struc_group %>% 
+    group_by(Age_Range,Year) %>%
+    summarise(Total_Number = sum(Number),
+              Recruitment_Number = sum(Recruitment)
+              )  
+
+retire_rate = Retire_col/retire_table[which(retire_table$Age_Range == '51-60'),]$Total_Number[1:4]
+```
+
+
+```{r}
+dist_2015 <- Distribution(pop_struc,2015)
+dist_2016 <- Distribution(pop_struc,2016)
+dist_2017 <- Distribution(pop_struc,2017)
+dist_2018 <- Distribution(pop_struc,2018)
+```
+
+
+
+```{r}
+Tran_Mtx_2015 <- Transition(dist_2015,2016)
+Tran_Mtx_2016 <- Transition(dist_2016,2017)
+Tran_Mtx_2017 <- Transition(dist_2017,2018)
+Tran_Mtx_2018 <- Transition(dist_2018,2019)
+```
+
+
+```{r}
+dist_list = list(dist_2015,dist_2016,dist_2017,dist_2018)
+Tran_list = list(Tran_Mtx_2015,Tran_Mtx_2016,Tran_Mtx_2017,Tran_Mtx_2018)
+year_number = length(dist_list)
+Tran =Tran_list[[year_number]]
+Dist = dist_list[[year_number]]
+```
+
+
+
+### Prediction
+#### 1. Predict recruitment number for next year
+```{r}
+pred_year = 2019
+
+Total_Recruit_Numbers <- c()
+Recruit_ratio_20_24 <- c()
+Recruit_ratio_25_28 <- c()
+Recruit_ratio_29_31 <- c()
+Recruit_ratio_32_35 <- c()
+Recruit_ratio_36_40 <- c()
+Recruit_ratio_41_50 <- c()
+Recruit_ratio_51_60 <- c() 
+for (i in 3:0){
+  total = sum(dist_list[[year_number-i]]$Recruitment_Number)
+  Total_Recruit_Numbers = c(Total_Recruit_Numbers,total)
+  Recruit_ratio_20_24 = c(Recruit_ratio_20_24,Tran_list[[year_number-i]]$Recruitment[1])
+  Recruit_ratio_25_28 = c(Recruit_ratio_25_28,Tran_list[[year_number-i]]$Recruitment[2])
+  Recruit_ratio_29_31 = c(Recruit_ratio_29_31,Tran_list[[year_number-i]]$Recruitment[3])
+  Recruit_ratio_32_35 = c(Recruit_ratio_32_35,Tran_list[[year_number-i]]$Recruitment[4])
+  Recruit_ratio_36_40 = c(Recruit_ratio_36_40,Tran_list[[year_number-i]]$Recruitment[5])
+  Recruit_ratio_41_50 = c(Recruit_ratio_41_50,Tran_list[[year_number-i]]$Recruitment[6])
+  Recruit_ratio_51_60 = c(Recruit_ratio_51_60,Tran_list[[year_number-i]]$Recruitment[7])
+}
+
+Year = 2016:2018
+
+lm_total_recruit = lm(Total_Recruit_Numbers[2:4]~Year)
+prob_20_24_recruit = mean(Recruit_ratio_20_24)
+prob_25_28_recruit = mean(Recruit_ratio_25_28)
+prob_29_31_recruit = mean(Recruit_ratio_29_31)
+prob_32_35_recruit = mean(Recruit_ratio_32_35)
+prob_36_40_recruit = mean(Recruit_ratio_36_40)
+prob_41_50_recruit = mean(Recruit_ratio_41_50)
+prob_51_60_recruit = mean(Recruit_ratio_51_60)
+
+
+```
+
+
+```{r}
+pre_recruitment = pre_recruit(pred_year)
+```
+
+
+
+#### 2. Predict Dimission Number for next year
+```{r}
+
+Age_Range = c('20-24','25-28','29-31','32-35','36-40','41-50','51-60')
+year_number = length(dist_list)
+Dismission_Ratio_20_24 <- c()
+Dismission_Ratio_25_28 <- c()
+Dismission_Ratio_29_31 <- c()
+Dismission_Ratio_32_35 <- c()
+Dismission_Ratio_36_40 <- c()
+Dismission_Ratio_41_50 <- c()
+Dismission_Ratio_51_60 <- c()
+for (i in 3:0){
+  Dismission_Ratio_20_24 = c(Dismission_Ratio_20_24,Tran_list[[year_number-i]]$Dismission[1])
+  Dismission_Ratio_25_28 = c(Dismission_Ratio_25_28,Tran_list[[year_number-i]]$Dismission[2])
+  Dismission_Ratio_29_31 = c(Dismission_Ratio_29_31,Tran_list[[year_number-i]]$Dismission[3])
+  Dismission_Ratio_32_35 = c(Dismission_Ratio_32_35,Tran_list[[year_number-i]]$Dismission[4])
+  Dismission_Ratio_36_40 = c(Dismission_Ratio_36_40,Tran_list[[year_number-i]]$Dismission[5])
+  Dismission_Ratio_41_50 = c(Dismission_Ratio_41_50,Tran_list[[year_number-i]]$Dismission[6])
+  Dismission_Ratio_51_60 = c(Dismission_Ratio_51_60,Tran_list[[year_number-i]]$Dismission[7])
+  
+}
+
+
+```
+
+```{r}
+pre_dismission_ = pre_dismission(dist_list) # predict dismissing number for next year in 7 groups
+```
+
+
+
+#### 3. Predict Retirement Number for next year
+```{r}
+Age_Range = c('20-24','25-28','29-31','32-35','36-40','41-50','51-60')
+Retirement_Ratio_51_60 <- c()
+for (i in 3:0){
+  Retirement_Ratio_51_60 = c(Retirement_Ratio_51_60,Tran_list[[year_number-i]]$Retirement[7])
+}
+Year = 2015:2018
+lm_Retirement_Ratio_51_60 =  lm(Retirement_Ratio_51_60~Year)
+```
+
+```{r}
+pre_retirement_ = pre_retirement(Tran_list)
+```
+
+
+
+```{r}
+Bound_Table = bound_table(pop_struc)
+in_tran = internal_tranistion(Bound_Table,Tran)
+New_rec = new_rec(Bound_Table)
+Old_Bound_Table = Bound_Table
+Bound_Table = new_Bound_Table(Bound_Table)
+```
+
+
+
+Compose to the next distribution table with the predictive info
+```{r}
+Age_Range = c('20-24','25-28','29-31','32-35','36-40','41-50','51-60')
+
+Total_Numbers <- Bound_Table %>% 
+  group_by(Age_Range) %>% 
+  summarise(total = sum(Number)) %>% 
+  select(c(total))
+Old_Total_Number <- Old_Bound_Table %>% 
+  group_by(Age_Range) %>% 
+  summarise(total = sum(Number)) %>% 
+  select(c(total))
+
+Dismission_Number = pre_dismission_
+Dismission_Ratio = Dismission_Number/sum(Old_Bound_Table$Number)
+Recruitment_Number = pre_recruitment
+Recruitment_Ratio = Recruitment_Number/sum(pre_recruitment)
+Boundary_Age = c(24,28,31,35,40,50,60)
+Boundary_Age_Number = Bound_Table[Boundary_Age-19,]$Number
+Boundary_Age_Ratio = Boundary_Age_Number/Total_Numbers
+Last_Dist = Dist
+Next_Dist = cbind(Age_Range,Total_Numbers,Dismission_Number,Dismission_Ratio,Recruitment_Number,Recruitment_Ratio,
+                   Boundary_Age,Boundary_Age_Number, Boundary_Age_Ratio)
+colnames(Next_Dist) <- colnames(Last_Dist) 
+
+```
+
+```{r}
+
+for (pred_year in 2020:2038){
+  
+  retire_rate_new = as.numeric( Bound_Table[which(Bound_Table$Age == 60),]$Number/Old_Total_Number[7,])
+  retire_rate = c(retire_rate,retire_rate_new)
+  
+  Next_Tran = Transition(Next_Dist,pred_year)
+  
+  dist_list[[pred_year-2014]] = Next_Dist
+  Tran_list[[pred_year-2014]] = Next_Tran
+  year_number = length(dist_list)
+  Tran =Next_Tran
+  Dist = Next_Dist
+  
+  ### Prediction
+  #### 1. Predict recruitment number for next year
+  pre_recruitment = pre_recruit(pred_year)
+  
+  
+  #### 2. Predict Dimission Number for next year
+  pre_dismission_ = pre_dismission(dist_list) # predict dismissing number for next year in 7 groups
+  
+  
+  #### 3. Predict Retirement Number for next year
+  pre_retirement_ = pre_retirement(Tran_list)
+  
+  
+  #### 4. Predict Bound Table
+  in_tran = internal_tranistion(Bound_Table,Tran)
+  New_rec = new_rec(Bound_Table)
+  Old_Bound_Table = Bound_Table
+  Bound_Table = new_Bound_Table(Bound_Table)
+  
+  
+  ### Compose to the next distribution table with the predictive info
+  Total_Numbers <- Bound_Table %>% 
+    group_by(Age_Range) %>% 
+    summarise(total = sum(Number)) %>% 
+    select(c(total))
+  Old_Total_Number <- Old_Bound_Table %>% 
+    group_by(Age_Range) %>% 
+    summarise(total = sum(Number)) %>% 
+    select(c(total))
+  
+  Dismission_Number = pre_dismission_
+  Dismission_Ratio = Dismission_Number/sum(Old_Bound_Table$Number)
+  Recruitment_Number = pre_recruitment
+  Recruitment_Ratio = Recruitment_Number/sum(pre_recruitment)
+  Boundary_Age = c(24,28,31,35,40,50,60)
+  Boundary_Age_Number = Bound_Table[Boundary_Age-19,]$Number
+  Boundary_Age_Ratio = Boundary_Age_Number/Total_Numbers
+  Last_Dist = Dist
+  Next_Dist = cbind(Age_Range,Total_Numbers,Dismission_Number,Dismission_Ratio,Recruitment_Number,Recruitment_Ratio,
+                    Boundary_Age,Boundary_Age_Number, Boundary_Age_Ratio)
+  colnames(Next_Dist) <- colnames(Last_Dist) 
+
+}
+dist_list[[pred_year-2013]] = Next_Dist
+
+```
+
+
+
+```{r}
+library(ggplot2)
+```
+
+```{r}
+population = data.frame()
+for (dist_index in 1:length(dist_list)){
+  dist = dist_list[[dist_index]]
+  population = rbind(population,dist$Total_Number)
+}
+colnames(population) = Age_Range
+rownames(population) = 2015:2038
+
+write.csv(population,"population.csv")
+
+```
+
+
+
+
+
